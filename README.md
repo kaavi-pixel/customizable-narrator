@@ -8,7 +8,7 @@ A client-side Fabric mod that changes how the Narrator reads chat.
 | `CUSTOM_NAME_AND_MESSAGE` | "the boss says hello" (custom name per player) |
 | `MESSAGE_ONLY` | "hello" |
 
-**Full step-by-step guide: [HOW_TO_INSTALL.md](HOW_TO_INSTALL.md)** · **Download: [Releases](../../releases/latest)**
+**Full step-by-step guide: [HOW_TO_INSTALL.md](HOW_TO_INSTALL.md)** · **Download: [customnarrator-1.3.0.jar](https://github.com/kaavi-pixel/customizable-narrator/raw/main/download/customnarrator-1.3.0.jar)**
 
 ## Install
 
