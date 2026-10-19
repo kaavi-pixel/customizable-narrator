@@ -1,0 +1,36 @@
+// Customizable Narrator — Minecraft 26.3 (Mojang mappings, Java 25)
+plugins {
+    id 'net.fabricmc.fabric-loom' version '1.17.21'
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group   = project.maven_group
+base { archivesName = project.archives_base_name }
+
+repositories {
+    maven { url = 'https://maven.shedaniel.me/' }       // Cloth Config
+    maven { url = 'https://maven.terraformersmc.com/' } // ModMenu
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    // Optional at runtime — only needed for the in-game settings screen
+    compileOnly "me.shedaniel.cloth:cloth-config-fabric:${project.cloth_config_version}"
+    compileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') { expand version: inputs.properties.version }
+}
+
+tasks.withType(JavaCompile).configureEach { it.options.release = 25 }
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(25)
+    withSourcesJar()
+}
+jar { from('LICENSE') { rename { "${it}_${project.archives_base_name}" } } }

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "customnarrator",
+  "version": "${version}",
+  "name": "Customizable Narrator",
+  "description": "Choose how the Narrator reads chat: 'player says message', a custom name per player, or just the message.",
+  "authors": ["Kavi"],
+  "license": "MIT",
+  "contact": {
+    "homepage": "https://github.com/kaavi-pixel/customizable-narrator",
+    "sources": "https://github.com/kaavi-pixel/customizable-narrator",
+    "issues": "https://github.com/kaavi-pixel/customizable-narrator/issues"
+  },
+  "environment": "client",
+  "entrypoints": {
+    "client":  ["dev.kavi.customnarrator.CustomNarratorClient"],
+    "modmenu": ["dev.kavi.customnarrator.config.ModMenuIntegration"]
+  },
+  "mixins": ["customnarrator.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.19.0",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  },
+  "suggests": { "cloth-config": "*", "modmenu": "*" }
+}
