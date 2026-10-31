@@ -8,13 +8,13 @@ A client-side Fabric mod that changes how the Narrator reads chat.
 | `CUSTOM_NAME_AND_MESSAGE` | "the boss says hello" (custom name per player) |
 | `MESSAGE_ONLY` | "hello" |
 
-**Full step-by-step guide: [HOW_TO_INSTALL.md](HOW_TO_INSTALL.md)** · **Download: [customnarrator-1.3.0.jar](https://github.com/kaavi-pixel/customizable-narrator/raw/main/download/customnarrator-1.3.0.jar)**
+**Step-by-step guides: [Windows](HOW_TO_INSTALL.md) · [Fedora Linux](HOW_TO_INSTALL_FEDORA.md)** · **Download: [customnarrator-1.4.0.jar](https://github.com/kaavi-pixel/customizable-narrator/raw/main/download/customnarrator-1.4.0.jar)**
 
 ## Install
 
 1. Fabric Loader 0.19.5+ for Minecraft 26.3
 2. Fabric API 0.161.0+26.3
-3. Put `customnarrator-1.3.0.jar` in `mods/`
+3. Put `customnarrator-1.4.0.jar` in `mods/`
 4. Optional: Cloth Config (26.3.x) and ModMenu (21.0.0) for an in-game settings screen
 
 Set the Narrator to **Chat** or **All** (Ctrl+B).
@@ -89,6 +89,18 @@ Extra config fields:
 ## Build
 
 JDK 25, then `./gradlew build`. The output goes to `build/libs/`.
+
+## Linux and Fedora
+
+Version 1.4.0 adds full Fedora support:
+
+- Ctrl+B and the narrator setting work even though Minecraft's own Linux narrator (flite) is missing
+- Piper audio plays through PipeWire (`pw-play`), then `paplay`, `aplay`, or Java audio
+- Piper is found in `~/piper`, `~/.local/share/piper`, `/opt/piper`, Downloads, or the game folder (for the Prism Flatpak)
+- Fedora's unrelated `piper` mouse app is detected and skipped
+- espeak-ng, or speech-dispatcher (`spd-say`) as a fallback, when Piper isn't installed
+
+See [HOW_TO_INSTALL_FEDORA.md](HOW_TO_INSTALL_FEDORA.md).
 
 ## Build from source
 

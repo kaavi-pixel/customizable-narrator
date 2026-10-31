@@ -9,7 +9,7 @@ This guide is for **Minecraft Java Edition 26.3** on Windows. Mac and Linux note
 | Minecraft Java Edition | 26.3 | Minecraft Launcher |
 | Fabric Loader | 0.19.5 or newer | [fabricmc.net/use/installer](https://fabricmc.net/use/installer/) |
 | Fabric API | 0.161.0+26.3 or newer | [Modrinth](https://modrinth.com/mod/fabric-api/versions?g=26.3) |
-| Customizable Narrator | 1.3.0 | [customnarrator-1.3.0.jar](https://github.com/kaavi-pixel/customizable-narrator/raw/main/download/customnarrator-1.3.0.jar) |
+| Customizable Narrator | 1.4.0 | [customnarrator-1.4.0.jar](https://github.com/kaavi-pixel/customizable-narrator/raw/main/download/customnarrator-1.4.0.jar) |
 | Piper + LibriTTS voice (optional) | see step 3 | for 904 different voices |
 | Cloth Config + ModMenu (optional) | 26.3.x / 21.0.0 | for an in-game settings screen |
 
@@ -23,7 +23,7 @@ This guide is for **Minecraft Java Edition 26.3** on Windows. Mac and Linux note
 
 1. Press `Win + R`, type `%appdata%\.minecraft\mods`, and press Enter. Create the `mods` folder if it doesn't exist.
 2. Put these files in it:
-   - [customnarrator-1.3.0.jar](https://github.com/kaavi-pixel/customizable-narrator/raw/main/download/customnarrator-1.3.0.jar)
+   - [customnarrator-1.4.0.jar](https://github.com/kaavi-pixel/customizable-narrator/raw/main/download/customnarrator-1.4.0.jar)
    - `fabric-api-0.161.0+26.3.jar` (or newer for 26.3)
    - Optional: Cloth Config and ModMenu for the settings screen
 
@@ -139,8 +139,6 @@ Settings are in `%appdata%\.minecraft\config\customnarrator.json`, or in ModMenu
 
 ## Mac and Linux
 
-The mod itself installs the same way. Your `mods` folder is:
-- Mac: `~/Library/Application Support/minecraft/mods`
-- Linux: `~/.minecraft/mods`
+On Fedora (and most other Linux systems), follow [HOW_TO_INSTALL_FEDORA.md](HOW_TO_INSTALL_FEDORA.md).
 
-For Piper, download the [Mac](https://github.com/rhasspy/piper/releases/tag/2023.11.14-2) or [Linux](https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz) build and put it in `~/piper`, with the voice files in `~/piper/voices`. Without Piper, the mod uses `say` on Mac or `espeak-ng` on Linux (`sudo apt install espeak-ng`).
+On Mac, the mod installs the same way, with the mods folder at `~/Library/Application Support/minecraft/mods`. Without Piper, it uses the built-in `say` voices.

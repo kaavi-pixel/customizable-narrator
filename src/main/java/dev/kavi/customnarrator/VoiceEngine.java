@@ -37,12 +37,16 @@ import java.util.regex.Pattern;
  *   WINDOWS : PowerShell + System.Speech (SAPI voices, usually David and Zira)
  *   MAC     : the `say` command
  *   ESPEAK  : espeak-ng / espeak on Linux
+ *   SPEECHD : speech-dispatcher (spd-say) on Linux, used if espeak-ng isn't installed
+ *
+ * On Linux, Piper's audio is played with pw-play (PipeWire, Fedora's default), then paplay,
+ * then aplay, then Java's own audio as a last resort.
  *
  * Messages are spoken one after another on a background thread, never on the game thread.
  */
 public final class VoiceEngine {
 
-    public enum Backend { DETECTING, PIPER, WINDOWS, MAC, ESPEAK, NONE }
+    public enum Backend { DETECTING, PIPER, WINDOWS, MAC, ESPEAK, SPEECHD, NONE }
 
     public static final String PIPER_PREFIX = "speaker ";
 
@@ -50,6 +54,7 @@ public final class VoiceEngine {
     private static volatile List<String> voices = List.of();
     private static volatile String statusInfo = "";
     private static String espeakCmd = "espeak-ng";
+    private static volatile List<String> linuxPlayer; // e.g. ["pw-play"], null = use Java audio
 
     // Windows PowerShell helper
     private static Process winProc;
@@ -99,9 +104,16 @@ public final class VoiceEngine {
         init();
     }
 
+    private static boolean isWindows() { return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win"); }
+    private static boolean isMac() { return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac"); }
+    private static boolean isLinux() { return !isWindows() && !isMac(); }
+    /** True when the game runs inside a Flatpak sandbox (for example Prism Launcher from Flathub). */
+    public static boolean inFlatpak() { return System.getenv("FLATPAK_ID") != null || Files.exists(Paths.get("/.flatpak-info")); }
+
     private static void detect() {
         NarratorConfig cfg = NarratorConfig.get();
         String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        if (isLinux()) detectLinuxPlayer();
         try {
             if (cfg.voiceBackend != NarratorConfig.VoiceBackend.SYSTEM && detectPiper(cfg)) {
                 // done
@@ -109,13 +121,20 @@ public final class VoiceEngine {
                 backend = Backend.NONE; // user asked for Piper only, and it wasn't found
             } else if (os.contains("win")) startWindows();
             else if (os.contains("mac")) detectMac();
-            else detectEspeak();
+            else {
+                detectEspeak();
+                if (backend == Backend.NONE) detectSpeechd();
+            }
         } catch (Exception e) {
             CustomNarratorClient.LOGGER.warn("[CustomNarrator] voice engine unavailable: {}", e.toString());
             backend = Backend.NONE;
         }
         if (backend != Backend.PIPER) {
             statusInfo = backend + ", " + voices.size() + " voices";
+        }
+        if (isLinux()) {
+            statusInfo += " | audio: " + (linuxPlayer == null ? "Java" : linuxPlayer.get(0))
+                    + (inFlatpak() ? " | Flatpak" : "");
         }
         CustomNarratorClient.LOGGER.info("[CustomNarrator] voice backend: {}", statusInfo);
     }
@@ -133,6 +152,16 @@ public final class VoiceEngine {
             candidates.add(Paths.get("C:\\piper"));
         }
         candidates.add(Paths.get(home, "piper"));
+        if (!win) {
+            candidates.add(Paths.get(home, ".local", "share", "piper"));
+            candidates.add(Paths.get(home, ".local", "opt", "piper"));
+            candidates.add(Paths.get("/opt/piper"));
+            candidates.add(Paths.get(home, "Downloads", "piper_linux_x86_64"));
+            candidates.add(Paths.get(home, "Downloads", "piper_linux_aarch64"));
+        }
+        try { // the game folder is always reachable, even inside a Flatpak sandbox
+            candidates.add(net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir().resolve("piper"));
+        } catch (Throwable ignored) { }
         candidates.add(Paths.get(home, "Documents", "piper"));
         candidates.add(Paths.get(home, "Desktop", "piper"));
         candidates.add(Paths.get(home, "Downloads", "piper"));
@@ -142,6 +171,10 @@ public final class VoiceEngine {
         Path exe = null;
         for (Path c : candidates) {
             exe = findExe(c, exeName);
+            if (exe != null && !win && !isPiperTts(exe)) {
+                CustomNarratorClient.LOGGER.warn("[CustomNarrator] {} is not Piper text-to-speech (Fedora's 'piper' package is a mouse settings app), skipping", exe);
+                exe = null;
+            }
             if (exe != null) break;
         }
         if (exe == null) {
@@ -190,6 +223,25 @@ public final class VoiceEngine {
         return null;
     }
 
+    /** Piper TTS is a native program. Fedora's mouse app called piper is a Python script. */
+    private static boolean isPiperTts(Path exe) {
+        try (java.io.InputStream in = Files.newInputStream(exe)) {
+            byte[] head = in.readNBytes(4);
+            boolean elf = head.length == 4 && head[0] == 0x7f && head[1] == 'E' && head[2] == 'L' && head[3] == 'F';
+            if (!elf) return false;
+        } catch (Exception e) {
+            return false;
+        }
+        if (!Files.isExecutable(exe)) {
+            // Some file managers drop the executable bit when extracting.
+            if (!exe.toFile().setExecutable(true)) {
+                CustomNarratorClient.LOGGER.warn("[CustomNarrator] {} is not executable. Run: chmod +x {}", exe, exe);
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static Path findModel(Path exeDir, String name) {
         String file = name.endsWith(".onnx") ? name : name + ".onnx";
         List<Path> dirs = new ArrayList<>();
@@ -217,6 +269,11 @@ public final class VoiceEngine {
                 piperExe.toString(), "-m", piperModel.toString(),
                 "--json-input", "--length_scale", String.format(Locale.ROOT, "%.2f", lengthScale));
         pb.directory(piperExe.getParent().toFile()); // Piper looks for espeak-ng-data next to itself
+        if (!isWindows()) {
+            String dir = piperExe.getParent().toString();
+            String old = System.getenv("LD_LIBRARY_PATH");
+            pb.environment().put("LD_LIBRARY_PATH", old == null || old.isBlank() ? dir : dir + ":" + old);
+        }
         pb.redirectError(ProcessBuilder.Redirect.DISCARD);
         piperProc = pb.start();
         piperIn = new BufferedWriter(new OutputStreamWriter(piperProc.getOutputStream(), StandardCharsets.UTF_8));
@@ -272,21 +329,96 @@ public final class VoiceEngine {
         return b.toString();
     }
 
+    /* ---------------- audio playback ---------------- */
+
+    private static final String[][] LINUX_PLAYERS = {
+            {"pw-play"},          // PipeWire (Fedora default)
+            {"paplay"},           // PulseAudio, also works on PipeWire
+            {"aplay", "-q"}       // ALSA
+    };
+
+    private static void detectLinuxPlayer() {
+        linuxPlayer = null;
+        for (String[] cmd : LINUX_PLAYERS) {
+            try {
+                Process p = new ProcessBuilder(cmd[0], "--version")
+                        .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+                if (p.waitFor() == 0) {
+                    linuxPlayer = List.of(cmd);
+                    return;
+                }
+            } catch (Exception ignored) { }
+        }
+    }
+
     private static void playWav(File wav) throws Exception {
+        List<String> player = linuxPlayer;
+        if (player != null) {
+            List<String> cmd = new ArrayList<>(player);
+            cmd.add(wav.getAbsolutePath());
+            if (run(cmd) == 0) return;
+            CustomNarratorClient.LOGGER.warn("[CustomNarrator] {} failed, switching to Java audio", player.get(0));
+            linuxPlayer = null;
+        }
+        playWavJava(wav);
+    }
+
+    private static void playWavJava(File wav) throws Exception {
         try (AudioInputStream in = AudioSystem.getAudioInputStream(wav)) {
             AudioFormat fmt = in.getFormat();
-            SourceDataLine line = (SourceDataLine) AudioSystem.getLine(new DataLine.Info(SourceDataLine.class, fmt));
+            byte[] pcm = in.readAllBytes();
+            DataLine.Info info = new DataLine.Info(SourceDataLine.class, fmt);
+            if (!AudioSystem.isLineSupported(info)) {
+                // Many Linux sound setups only accept 44.1/48 kHz stereo. Piper makes 22.05 kHz mono.
+                pcm = toStereo16(pcm, fmt, 48000f);
+                fmt = new AudioFormat(48000f, 16, 2, true, false);
+                info = new DataLine.Info(SourceDataLine.class, fmt);
+            }
+            SourceDataLine line = (SourceDataLine) AudioSystem.getLine(info);
             line.open(fmt);
             playing = line;
             line.start();
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = in.read(buf)) > 0) line.write(buf, 0, n);
+            for (int off = 0; off < pcm.length; off += 8192) {
+                line.write(pcm, off, Math.min(8192, pcm.length - off));
+            }
             line.drain();
             line.close();
         } finally {
             playing = null;
         }
+    }
+
+    /** Converts 16-bit little-endian PCM (mono or stereo, any rate) to 16-bit stereo at the target rate. */
+    static byte[] toStereo16(byte[] pcm, AudioFormat fmt, float targetRate) {
+        if (fmt.getSampleSizeInBits() != 16 || fmt.isBigEndian()) {
+            throw new IllegalArgumentException("unsupported WAV format: " + fmt);
+        }
+        int ch = Math.max(1, fmt.getChannels());
+        int frames = pcm.length / (2 * ch);
+        if (frames == 0) return new byte[0];
+        double step = fmt.getSampleRate() / targetRate;
+        int outFrames = (int) Math.floor((frames - 1) / step) + 1;
+        byte[] out = new byte[outFrames * 4];
+        for (int i = 0; i < outFrames; i++) {
+            double pos = i * step;
+            int a = (int) pos;
+            int b = Math.min(a + 1, frames - 1);
+            double t = pos - a;
+            for (int c = 0; c < 2; c++) {
+                int src = Math.min(c, ch - 1);
+                int sa = sample(pcm, (a * ch + src) * 2);
+                int sb = sample(pcm, (b * ch + src) * 2);
+                int v = (int) Math.round(sa + (sb - sa) * t);
+                int o = (i * 2 + c) * 2;
+                out[o] = (byte) v;
+                out[o + 1] = (byte) (v >> 8);
+            }
+        }
+        return out;
+    }
+
+    private static int sample(byte[] b, int i) {
+        return (short) ((b[i] & 0xff) | (b[i + 1] << 8));
     }
 
     /* ---------------- Windows ---------------- */
@@ -374,6 +506,23 @@ public final class VoiceEngine {
         backend = Backend.NONE;
     }
 
+    /* ---------------- Linux (speech-dispatcher) ---------------- */
+
+    private static final String[] SPEECHD_VOICES = {
+            "male1", "male2", "male3", "female1", "female2", "female3", "child_male", "child_female"
+    };
+
+    private static void detectSpeechd() {
+        try {
+            Process p = new ProcessBuilder("spd-say", "--version")
+                    .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+            if (p.waitFor() == 0) {
+                voices = List.of(SPEECHD_VOICES);
+                backend = Backend.SPEECHD;
+            }
+        } catch (Exception ignored) { }
+    }
+
     /* ---------------- speaking ---------------- */
 
     /**
@@ -401,6 +550,9 @@ public final class VoiceEngine {
                     case ESPEAK -> run(v.isEmpty()
                             ? List.of(espeakCmd, "-s", String.valueOf(wpm(r)), "--", text)
                             : List.of(espeakCmd, "-v", v, "-s", String.valueOf(wpm(r)), "--", text));
+                    case SPEECHD -> run(v.isEmpty()
+                            ? List.of("spd-say", "-w", "-r", String.valueOf(r * 10), "--", text)
+                            : List.of("spd-say", "-w", "-t", v, "-r", String.valueOf(r * 10), "--", text));
                     default -> { }
                 }
             } catch (Exception e) {
@@ -411,12 +563,15 @@ public final class VoiceEngine {
 
     private static int wpm(int rate) { return 175 + rate * 15; }
 
-    private static void run(List<String> cmd) throws Exception {
+    private static int run(List<String> cmd) throws Exception {
         Process p = new ProcessBuilder(cmd)
                 .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
         currentProc = p;
-        p.waitFor();
-        currentProc = null;
+        try {
+            return p.waitFor();
+        } finally {
+            currentProc = null;
+        }
     }
 
     /** Picks a stable voice for a player (same name -> same voice every time). */
